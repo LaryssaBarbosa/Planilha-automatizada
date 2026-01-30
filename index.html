@@ -159,97 +159,102 @@ h1 {
 <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
 
 <script>
-function scrollToOptions() {
-  document.getElementById('options-section')
-    .scrollIntoView({ behavior: 'smooth' });
-}
-
-function showPage(pageId) {
-  document.getElementById('home-page').classList.add('hidden');
-  document.getElementById('page-espelho').classList.add('hidden');
-
-  if (pageId === 'home') {
-    document.getElementById('home-page').classList.remove('hidden');
-  } else {
-    document.getElementById('page-' + pageId).classList.remove('hidden');
-    window.scrollTo(0, 0);
-  }
-}
-
 async function modoEspelho() {
-  const modelo = document.getElementById('modelo').files[0];
-  const bruto = document.getElementById('bruto').files[0];
+  try {
+    const modelo = document.getElementById('modelo').files[0];
+    const bruto = document.getElementById('bruto').files[0];
 
-  if (!modelo || !bruto) {
-    alert('Selecione os dois arquivos');
-    return;
-  }
+    if (!modelo || !bruto) {
+      alert('Selecione os dois arquivos');
+      return;
+    }
 
-  const wbModelo = new ExcelJS.Workbook();
-  await wbModelo.xlsx.load(await modelo.arrayBuffer());
-  const wsModelo = wbModelo.worksheets[0];
+    const wbModelo = new ExcelJS.Workbook();
+    await wbModelo.xlsx.load(await modelo.arrayBuffer());
+    const wsModelo = wbModelo.worksheets[0];
 
-  // limpa dados antigos (mantém layout)
-  wsModelo.spliceRows(2, wsModelo.rowCount);
+    // limpa dados antigos (mantém layout)
+    if (wsModelo.rowCount > 1) {
+      wsModelo.spliceRows(2, wsModelo.rowCount);
+    }
 
-  let dados = [];
+    let dados = [];
 
-  // CSV
-  if (bruto.name.toLowerCase().endsWith('.csv')) {
-    const texto = await bruto.text();
-    dados = texto
-      .split(/\r?\n/)
-      .filter(l => l.trim())
-      .slice(1)
-      .map(l =>
-        l.split(',').map(v =>
-          v.replace(/^"|"$/g, '').replace(',', '.').trim()
-        )
-      );
-  }
-  // XLSX
-  else {
-    const wbBruto = new ExcelJS.Workbook();
-    await wbBruto.xlsx.load(await bruto.arrayBuffer());
-    const wsBruto = wbBruto.worksheets[0];
+    // ===== CSV =====
+    if (bruto.name.toLowerCase().endsWith('.csv')) {
+      const texto = await bruto.text();
+      dados = texto
+        .split(/\r?\n/)
+        .filter(l => l.trim() !== '')
+        .slice(1)
+        .map(l =>
+          l.split(',').map(v =>
+            v.replace(/^"|"$/g, '').trim()
+          )
+        );
+    }
+    // ===== XLSX =====
+    else {
+      const wbBruto = new ExcelJS.Workbook();
+      await wbBruto.xlsx.load(await bruto.arrayBuffer());
+      const wsBruto = wbBruto.worksheets[0];
 
-    wsBruto.eachRow((row, i) => {
-      if (i === 1) return;
-      dados.push(row.values.slice(1));
+      wsBruto.eachRow((row, i) => {
+        if (i === 1) return;
+        dados.push(row.values.slice(1));
+      });
+    }
+
+    if (dados.length === 0) {
+      alert('Nenhum dado encontrado no arquivo bruto');
+      return;
+    }
+
+    dados.forEach(linha => wsModelo.addRow(linha));
+
+    // filtros
+    wsModelo.autoFilter = {
+      from: 'A1',
+      to: wsModelo.getRow(1).lastCell.address
+    };
+
+    // congela cabeçalho
+    wsModelo.views = [{ state: 'frozen', ySplit: 1 }];
+
+    // largura automática
+    wsModelo.columns.forEach(col => {
+      let max = 12;
+      col.eachCell({ includeEmpty: true }, cell => {
+        max = Math.max(max, String(cell.value ?? '').length);
+      });
+      col.width = max + 2;
     });
-  }
 
-  dados.forEach(linha => wsModelo.addRow(linha));
-
-  // filtros
-  wsModelo.autoFilter = {
-    from: 'A1',
-    to: wsModelo.getRow(1).lastCell.address
-  };
-
-  // congelar cabeçalho
-  wsModelo.views = [{ state: 'frozen', ySplit: 1 }];
-
-  // largura automática
-  wsModelo.columns.forEach(col => {
-    let max = 12;
-    col.eachCell({ includeEmpty: true }, cell => {
-      max = Math.max(max, String(cell.value || '').length);
+    // ===== DOWNLOAD =====
+    const buffer = await wbModelo.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     });
-    col.width = max + 2;
-  });
 
-  const buffer = await wbModelo.xlsx.writeBuffer();
-  const blob = new Blob([buffer], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-  });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'relatorio_formatado.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'relatorio_formatado.xlsx';
-  a.click();
+  } catch (erro) {
+    console.error(erro);
+    alert(
+      'Erro ao gerar o Excel.\n\n' +
+      erro.message
+    );
+  }
 }
 </script>
+
 
 </body>
 </html>
